@@ -1,0 +1,82 @@
+version: "3.8"
+
+services:
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: emartapp_client
+    ports:
+      - "4200:80"
+    depends_on:
+      - nodeapi
+      - javaapi
+    restart: unless-stopped
+
+  nodeapi:
+    build:
+      context: ./nodeapi
+      dockerfile: Dockerfile
+    container_name: emartapp_nodeapi
+    ports:
+      - "5000:5000"
+    depends_on:
+      - emongo
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+
+  javaapi:
+    build:
+      context: ./javaapi
+      dockerfile: Dockerfile
+    container_name: emartapp_javaapi
+    ports:
+      - "9000:9000"
+    depends_on:
+      - emartdb
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://emartdb:3306/books?allowPublicKeyRetrieval=true&useSSL=False
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=emartdbpass
+      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+    restart: unless-stopped
+
+  emartdb:
+    image: mysql:8.0
+    container_name: emartapp_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: emartdbpass
+      MYSQL_DATABASE: books
+    ports:
+      - "3306:3306"
+    volumes:
+      - emartdb-data:/var/lib/mysql
+    restart: unless-stopped
+
+  emongo:
+    image: mongo:5.0
+    container_name: emartapp_mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - emongo-data:/data/db
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: emartapp_nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - client
+      - nodeapi
+      - javaapi
+    restart: unless-stopped
+
+volumes:
+  emartdb-data:
+  emongo-data:

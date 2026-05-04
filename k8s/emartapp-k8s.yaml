@@ -1,0 +1,358 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: emartapp
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-gateway-config
+  namespace: emartapp
+data:
+  default.conf: |
+    upstream client {
+      server client:80;
+    }
+
+    upstream api {
+      server nodeapi:5000;
+    }
+
+    upstream webapi {
+      server javaapi:9000;
+    }
+
+    server {
+      listen 80;
+
+      location / {
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_pass http://client/;
+      }
+
+      location /api/ {
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://api/;
+      }
+
+      location /webapi/ {
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://webapi/;
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client
+  namespace: emartapp
+  labels:
+    app: client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: client
+  template:
+    metadata:
+      labels:
+        app: client
+    spec:
+      containers:
+      - name: client
+        image: tejas819/emartapp-dc1-client
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: client
+  namespace: emartapp
+spec:
+  selector:
+    app: client
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nodeapi
+  namespace: emartapp
+  labels:
+    app: nodeapi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nodeapi
+  template:
+    metadata:
+      labels:
+        app: nodeapi
+    spec:
+      containers:
+      - name: nodeapi
+        image: tejas819/emartapp-dc1-nodeapi
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5000
+        env:
+        - name: NODE_ENV
+          value: production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodeapi
+  namespace: emartapp
+spec:
+  selector:
+    app: nodeapi
+  ports:
+  - port: 5000
+    targetPort: 5000
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: javaapi
+  namespace: emartapp
+  labels:
+    app: javaapi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: javaapi
+  template:
+    metadata:
+      labels:
+        app: javaapi
+    spec:
+      containers:
+      - name: javaapi
+        image: tejas819/emartapp-dc1-javaapi
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: javaapi
+  namespace: emartapp
+spec:
+  selector:
+    app: javaapi
+  ports:
+  - port: 9000
+    targetPort: 9000
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: emartdb
+  namespace: emartapp
+  labels:
+    app: emartdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: emartdb
+  template:
+    metadata:
+      labels:
+        app: emartdb
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: emartdbpass
+        - name: MYSQL_DATABASE
+          value: books
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-data
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: emartdb
+  namespace: emartapp
+spec:
+  selector:
+    app: emartdb
+  ports:
+  - port: 3306
+    targetPort: 3306
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: emongo
+  namespace: emartapp
+  labels:
+    app: emongo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: emongo
+  template:
+    metadata:
+      labels:
+        app: emongo
+    spec:
+      containers:
+      - name: mongo
+        image: mongo:5.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 27017
+        env:
+        - name: MONGO_INITDB_DATABASE
+          value: epoc
+        volumeMounts:
+        - name: mongo-data
+          mountPath: /data/db
+      volumes:
+      - name: mongo-data
+        persistentVolumeClaim:
+          claimName: mongo-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: emongo
+  namespace: emartapp
+spec:
+  selector:
+    app: emongo
+  ports:
+  - port: 27017
+    targetPort: 27017
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: emartapp
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongo-pvc
+  namespace: emartapp
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-gateway
+  namespace: emartapp
+  labels:
+    app: nginx-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-gateway
+  template:
+    metadata:
+      labels:
+        app: nginx-gateway
+    spec:
+      containers:
+      - name: nginx-gateway
+        image: nginx:alpine
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: default.conf
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-gateway-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-gateway
+  namespace: emartapp
+spec:
+  selector:
+    app: nginx-gateway
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: emartapp-ingress
+  namespace: emartapp
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: crash.logevent.xyz
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-gateway
+            port:
+              number: 80
